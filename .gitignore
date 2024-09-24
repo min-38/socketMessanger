@@ -1,0 +1,20 @@
+# Ignore All
+*
+
+# Unignore all with extensions
+!*.*
+
+# Unignore all dirs
+!*/
+
+# makefile
+!makefile
+
+# object file
+*.o
+
+# .trunk
+.trunk
+
+# .vscode
+.vscodeecho ref: refs/heads/master >.git/HEAD
