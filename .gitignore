@@ -17,4 +17,4 @@
 .trunk
 
 # .vscode
-.vscodeecho ref: refs/heads/master >.git/HEAD
+.vscode
