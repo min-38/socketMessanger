@@ -1,59 +1,75 @@
+// client.cpp
 #include <iostream>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include <string>
+#include <thread>
+#include <mutex>
 #include <unistd.h>
-#include <cstring>
+#include <arpa/inet.h>
 
+#define IPADDR INADDR_ANY
 #define PORT 8080
 
-int main(int argc, char const *argv[]) {
-    int sock = 0, valread;
-    struct sockaddr_in serv_addr;
-    char buffer[1024] = {0};
+std::mutex mtx;
 
-    // Create socket file descriptor
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        std::cerr << "Socket creation error" << std::endl;
-        return -1;
+void receiveMessages(int client_socket) {
+    char buffer[1024];
+    while (true) {
+        std::lock_guard<std::mutex> guard(mtx);
+        int bytes_received = recv(client_socket, buffer, sizeof(buffer), 0);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0';
+            std::cout << "Message> " << buffer << std::endl;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+void client() {
+    int client_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(client_fd == -1) {
+        std::cerr << "Failed to create socket.\n";
+        return;
     }
 
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(PORT);
+    sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(PORT);
 
     // Convert IPv4 and IPv6 addresses from text to binary form
-    if(inet_pton(AF_INET, "127.0.0.1", &serv_addr.sin_addr)<=0) {
+    if(inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr) <= 0) {
         std::cerr << "Invalid address/ Address not supported" << std::endl;
-        return -1;
+        return;
     }
 
-    const char* exitMsg = "님이 나가셨습니다.";
-    int pick = 0;
-    while(pick != 2) {
-        // Connect to the server
-        if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-            std::cerr << "Connection Failed" << std::endl;
-            return -1;
-        }
+    if(connect(client_fd, (sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
+        std::cerr << "Failed to connect to server.\n";
+        return;
+    }
 
-        // Receive message from the server
-        valread = read(sock, buffer, 1024);
-        std::cout << buffer << std::endl;
+    std::thread receive_thread(receiveMessages, client_fd);
+    receive_thread.detach();
 
-        std::cout << "1. 채팅 치기" << std::endl;
-        std::cout << "2. 나가기" << std::endl;
+    std::string message;
+    while (true) {
+        std::lock_guard<std::mutex> guard(mtx);
 
-        std::cin >> pick;
-
-        std::cout << "입력해보야요" << std::endl;
-
-        char* msg = new char[1024];
-        if(pick == 1) {
-            std::cin >> msg;
-            send(sock, msg, strlen(msg), 0);
-        } else {
-            send(sock, exitMsg, strlen(exitMsg), 0);
+        if(!receive_thread.joinable()) {
+            std::cout << "나> ";
+            std::getline(std::cin, message);
+            send(client_fd, message.c_str(), message.size(), 0);
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
     }
+
+    close(client_fd);
+}
+
+int main() {
+    // 클라이언트 스레드를 실행
+    std::thread client_thread(client);
+    client_thread.join();  // 클라이언트 스레드가 끝날 때까지 기다림
 
     return 0;
 }
